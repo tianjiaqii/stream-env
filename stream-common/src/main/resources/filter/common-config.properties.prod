@@ -1,0 +1,8 @@
+Kafka.bootstrap.servers=cdh01:9092,cdh02:9092,cdh03:9092
+REALTIME.KAFKA.LOG.TOPIC=realtime_log
+kafka.err.log=error_logs
+kafka.start.log=start_logs
+kafka.display.log=display_logs
+kafka.action.log=action_logs
+kafka.dirty.topic=dirty_logs
+kafka.page.topic=page_logs

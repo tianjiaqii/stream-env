@@ -191,13 +191,13 @@
                 <groupId>org.apache.hadoop</groupId>
                 <artifactId>hadoop-client</artifactId>
                 <version>${hadoop.version}</version>
-                <!--                <scope>provided</scope>-->
+                <!--<scope>provided</scope>-->
             </dependency>
 
             <dependency>
                 <groupId>org.apache.hadoop</groupId>
                 <artifactId>hadoop-auth</artifactId>
-                <!--                <scope>provided</scope>-->
+                <!--<scope>provided</scope>-->
                 <exclusions>
                     <exclusion>
                         <groupId>org.slf4j</groupId>
@@ -205,6 +205,8 @@
                     </exclusion>
                 </exclusions>
             </dependency>
+
+
             <!-- hadoop 相关依赖 结束 -->
 
 
