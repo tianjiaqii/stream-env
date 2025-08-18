@@ -28,7 +28,7 @@ public class ReadKafka {
         // 创建 Kafka 消费者
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             // 订阅主题
-            String topic = "realtime_log";
+            String topic = "start_log";
             consumer.subscribe(Collections.singletonList(topic));
             System.out.println("开始消费 Kafka 主题: " + topic);
 
