@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="TemplatesSettings">
+    <option name="templateConfigs">
+      <TemplateContext>
+        <option name="generateConfig">
+          <GenerateConfig>
+            <option name="annotationType" value="NONE" />
+            <option name="basePackage" value="domain" />
+            <option name="basePath" value="src/main/java/com/retailersv1/" />
+            <option name="classNameStrategy" value="camel" />
+            <option name="encoding" value="UTF-8" />
+            <option name="extraClassSuffix" value="" />
+            <option name="ignoreFieldPrefix" value="" />
+            <option name="ignoreFieldSuffix" value="" />
+            <option name="ignoreTablePrefix" value="" />
+            <option name="ignoreTableSuffix" value="" />
+            <option name="moduleName" value="stream-realtime" />
+            <option name="modulePath" value="$PROJECT_DIR$" />
+            <option name="moduleUIInfoList">
+              <list />
+            </option>
+            <option name="needToStringHashcodeEquals" value="true" />
+            <option name="needsComment" value="true" />
+            <option name="needsDate" value="true" />
+            <option name="needsDecimal" value="true" />
+            <option name="needsModel" value="true" />
+            <option name="relativePackage" value="domain" />
+            <option name="superClass" value="" />
+            <option name="tableUIInfoList">
+              <list>
+                <TableUIInfo>
+                  <option name="className" value="CommentInfo" />
+                  <option name="tableName" value="comment_info" />
+                </TableUIInfo>
+              </list>
+            </option>
+            <option name="templatesName" value="custom-model-swagger" />
+          </GenerateConfig>
+        </option>
+        <option name="moduleName" value="stream-realtime" />
+        <option name="projectPath" value="$PROJECT_DIR$" />
+        <option name="templateName" value="custom-model-swagger" />
+      </TemplateContext>
+    </option>
+  </component>
+</project>

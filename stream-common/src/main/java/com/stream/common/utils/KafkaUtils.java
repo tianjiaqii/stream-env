@@ -137,6 +137,8 @@ public class KafkaUtils {
     }
 
 
+
+
     public static class SafeStringDeserializationSchema implements DeserializationSchema<String> {
 
         @Override
