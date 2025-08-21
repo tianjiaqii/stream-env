@@ -50,7 +50,7 @@ public class DwdCommentInfo {
 
 //        commentInfoDs.print("commentInfoDs -> ");
         //发送到dwd_comment_info主题
-//        commentInfoDs.sinkTo(KafkaUtils.buildKafkaSink("cdh01:9092","dwd_comment_info"));
+        commentInfoDs.sinkTo(KafkaUtils.buildKafkaSink("cdh01:9092","dwd_comment_info"));
 
         //创建KafkaTable 获取Kafka中的数据
         tableEnv.executeSql("CREATE TABLE KafkaTable (\n" +
@@ -67,7 +67,10 @@ public class DwdCommentInfo {
                 "   `order_id` string"+
                 ">,\n"+
                 "  `source` MAP<string,string>,\n" +
-                "  `ts_ms` string\n" +
+                "   `proc_time` as proctime() ,\n"+
+                "  `ts_ms` BIGINT,\n" +
+                "    ts_ts AS TO_TIMESTAMP(FROM_UNIXTIME(ts_ms / 1000)),\n" +
+                "    WATERMARK FOR ts_ts AS ts_ts - INTERVAL '5' SECOND\n" +
                 ") WITH (\n" +
                 "  'connector' = 'kafka',\n" +
                 "  'topic' = 'dwd_comment_info',\n" +
@@ -80,7 +83,7 @@ public class DwdCommentInfo {
 //        tableEnv.executeSql("select * from KafkaTable").print();
 
         //提取after中具体的值
-        Table table = tableEnv.sqlQuery("SELECT \n" +
+        Table commentTable = tableEnv.sqlQuery("SELECT \n" +
                 "`after`.`create_time` AS create_time,\n" +
                 "`after`.`user_id` AS user_id,\n" +
                 "`after`.`appraise` AS appraise,\n" +
@@ -90,31 +93,64 @@ public class DwdCommentInfo {
                 "`after`.`id` AS id,\n" +
                 "`after`.`spu_id` AS spu_id,\n" +
                 "`after`.`order_id` AS order_id,\n" +
-                "`ts_ms` AS ts \n" +
+                "`proc_time` AS ts \n" +
                 "FROM KafkaTable");
 
-//        table.execute().print();
+//        commentTable.execute().print();
 
+        //将表对象注册到表执行环境中
+        tableEnv.createTemporaryView("comment_info", commentTable);
 
         //获取HBASE表中的数据
         tableEnv.executeSql("CREATE TABLE base_dic (\n" +
                 " dic_code string,\n" +
-                " info ROW<dic_name string>,\n" +
+                " info ROW<dic_code string , dic_name string >,\n" +
                 " PRIMARY KEY (dic_code) NOT ENFORCED\n" +
                 ") WITH (\n" +
                 " 'connector' = 'hbase-2.2',\n" +
                 " 'table-name' = 'dim_base_dic',\n" +
                 " 'zookeeper.quorum' = 'cdh01:2181'\n" +
                 ");");
-        tableEnv.executeSql("select * from base_dic").print();
+//        tableEnv.executeSql("SELECT info.dic_code, info.dic_name FROM base_dic").print();
 
 
+        //将评论表和字典表进行关联
+        Table joinTable = tableEnv.sqlQuery("SELECT \n" +
+                "id,\n" +
+                "user_id,\n" +
+                "sku_id,\n" +
+                "appraise,\n" +
+                "dic.dic_name appraise_name,\n" +
+                "comment_txt,\n" +
+                "c.ts ts\n" +
+                "FROM comment_info AS c\n" +
+                "  JOIN base_dic FOR SYSTEM_TIME AS OF c.ts AS dic\n" +
+                "    ON c.appraise = dic.dic_code;");
+
+        joinTable.execute().print();
 
 
+        //创建要写入Kafka的动态表
+        tableEnv.executeSql("create table dwd_comment_info_inc(\n" +
+                "id string,\n" +
+                "user_id string,\n" +
+                "sku_id string,\n" +
+                "appraise string,\n" +
+                "appraise_name string,\n" +
+                "comment_txt string,\n" +
+                "ts TIMESTAMP_LTZ(3),\n" +
+                "PRIMARY KEY (id) NOT ENFORCED  -- 关键：添加主键约束（以id为例）\n" +
+                ") with (\n" +
+                "'connector' = 'upsert-kafka',\n" +
+                "'topic' = 'dwd_comment_info_inc_topic',\n" +
+                "'properties.bootstrap.servers' = 'cdh01:9092',\n" +
+                "'key.format' = 'json',\n" +
+                "'value.format' = 'json'\n" +
+                ")");
 
+        joinTable.executeInsert("dwd_comment_info_inc");
 
-
-                // 4. 执行Flink作业
+        // 4. 执行Flink作业
         env.execute("Read Kafka dim_all_topic Data");
 
 
