@@ -12,9 +12,10 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
-public class DwdCommentInfo {
+public class DwdCartInfo {
     private static final String kafka_botstrap_servers = ConfigUtils.getString("kafka.bootstrap.servers");
     private static final String Kafka_topic_base_log_data = ConfigUtils.getString("kafka.cdc.db.topic");
+
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         // 可根据需要设置并行度（默认使用环境配置）
@@ -34,33 +35,33 @@ public class DwdCommentInfo {
         );
 //        kafkaSourceDs.print("kafkaSourceDs -> ");
 
-
-        //过滤commentInfo评论表的数据
-        SingleOutputStreamOperator<JSONObject> commentInfoJsonDs = kafkaSourceDs.map(JSONObject::parseObject)
-                .filter(data -> data.getJSONObject("source").getString("table").equals("comment_info"))
-                .uid("filter_comment_info data")
-                .name("filter_comment_info data");
-
+        //过滤cartInfo评论表的数据
+        SingleOutputStreamOperator<JSONObject> cartInfoJsonDs = kafkaSourceDs.map(JSONObject::parseObject)
+                .filter(data -> data.getJSONObject("source").getString("table").equals("cart_info"))
+                .uid("filter_cart_info data")
+                .name("filter_cart_info data");
+        
         //将jsonobject数据转为string
-        SingleOutputStreamOperator<String> commentInfoDs = commentInfoJsonDs.map(JSON::toJSONString);
+        SingleOutputStreamOperator<String> cartInfoDs = cartInfoJsonDs.map(JSON::toJSONString);
 
-//        commentInfoDs.print("commentInfoDs -> ");
-        //发送到dwd_comment_info主题
-        commentInfoDs.sinkTo(KafkaUtils.buildKafkaSink("cdh01:9092","dwd_comment_info"));
+//        cartInfoDs.print("cartInfoDs -> ");
+
+        //发送到dwd_cart_info主题
+        cartInfoDs.sinkTo(KafkaUtils.buildKafkaSink("cdh01:9092","dwd_cart_info"));
 
         //创建KafkaTable 获取Kafka中的数据
         tableEnv.executeSql("CREATE TABLE KafkaTable (\n" +
                 "  `op` string,\n" +
                 "  `after` ROW<\n" +
+                "   `is_ordered` string,\n"+
+                "   `cart_price` string,\n"+
+                "   `sku_num` bigint,\n"+
                 "   `create_time` bigint,\n"+
                 "   `user_id` string,\n"+
-                "   `appraise` string,\n"+
-                "   `comment_txt` string,\n"+
-                "   `nick_name` string,\n"+
                 "   `sku_id` string,\n"+
+                "   `sku_name` string,\n"+
                 "   `id` string,\n"+
-                "   `spu_id` string,\n"+
-                "   `order_id` string"+
+                "   `operate_time` bigint"+
                 ">,\n"+
                 "  `source` MAP<string,string>,\n" +
                 "   `proc_time` as proctime() ,\n"+
@@ -69,7 +70,7 @@ public class DwdCommentInfo {
                 "    WATERMARK FOR ts_ts AS ts_ts - INTERVAL '5' SECOND\n" +
                 ") WITH (\n" +
                 "  'connector' = 'kafka',\n" +
-                "  'topic' = 'dwd_comment_info',\n" +
+                "  'topic' = 'dwd_cart_info',\n" +
                 "  'properties.bootstrap.servers' = 'cdh01:9092',\n" +
                 "  'properties.group.id' = 'testGroup',\n" +
                 "  'scan.startup.mode' = 'earliest-offset',\n" +
@@ -79,66 +80,37 @@ public class DwdCommentInfo {
 //        tableEnv.executeSql("select * from KafkaTable").print();
 
         //提取after中具体的值
-        Table commentTable = tableEnv.sqlQuery("SELECT \n" +
+        Table cartTable = tableEnv.sqlQuery("SELECT \n" +
+                "`after`.`is_ordered` AS is_ordered,\n" +
+                "`after`.`cart_price` AS cart_price,\n" +
+                "`after`.`sku_num` AS sku_num,\n" +
                 "`after`.`create_time` AS create_time,\n" +
                 "`after`.`user_id` AS user_id,\n" +
-                "`after`.`appraise` AS appraise,\n" +
-                "`after`.`comment_txt` AS comment_txt,\n" +
-                "`after`.`nick_name` AS nick_name,\n" +
                 "`after`.`sku_id` AS sku_id,\n" +
+                "`after`.`sku_name` AS sku_name,\n" +
                 "`after`.`id` AS id,\n" +
-                "`after`.`spu_id` AS spu_id,\n" +
-                "`after`.`order_id` AS order_id,\n" +
+                "`after`.`operate_time` AS operate_time,\n" +
                 "`proc_time` AS ts \n" +
                 "FROM KafkaTable");
 
-//        commentTable.execute().print();
-
-        //将表对象注册到表执行环境中
-        tableEnv.createTemporaryView("comment_info", commentTable);
-
-        //获取HBASE表中的数据
-        tableEnv.executeSql("CREATE TABLE base_dic (\n" +
-                " dic_code string,\n" +
-                " info ROW<dic_code string , dic_name string >,\n" +
-                " PRIMARY KEY (dic_code) NOT ENFORCED\n" +
-                ") WITH (\n" +
-                " 'connector' = 'hbase-2.2',\n" +
-                " 'table-name' = 'dim_base_dic',\n" +
-                " 'zookeeper.quorum' = 'cdh01:2181'\n" +
-                ");");
-//        tableEnv.executeSql("SELECT info.dic_code, info.dic_name FROM base_dic").print();
-
-
-        //将评论表和字典表进行关联
-        Table joinTable = tableEnv.sqlQuery("SELECT \n" +
-                "id,\n" +
-                "user_id,\n" +
-                "sku_id,\n" +
-                "appraise,\n" +
-                "dic.dic_name appraise_name,\n" +
-                "comment_txt,\n" +
-                "c.ts ts\n" +
-                "FROM comment_info AS c\n" +
-                "  JOIN base_dic FOR SYSTEM_TIME AS OF c.ts AS dic\n" +
-                "    ON c.appraise = dic.dic_code;");
-
-        joinTable.execute().print();
-
+//        cartTable.execute().print();
 
         //创建要写入Kafka的动态表
-        tableEnv.executeSql("create table dwd_comment_info_inc(\n" +
-                "id string,\n" +
+        tableEnv.executeSql("create table dwd_cart_info_inc(\n" +
+                "is_ordered string,\n" +
+                "cart_price string,\n" +
+                "sku_num bigint,\n" +
+                "create_time bigint,\n" +
                 "user_id string,\n" +
                 "sku_id string,\n" +
-                "appraise string,\n" +
-                "appraise_name string,\n" +
-                "comment_txt string,\n" +
-                "ts TIMESTAMP_LTZ(3),\n" +
+                "sku_name string,\n" +
+                "id string,\n"+
+                "operate_time bigint,\n"+
+                "ts TIMESTAMP_LTZ(3),\n"+
                 "PRIMARY KEY (id) NOT ENFORCED  -- 主键会自动作为Kafka的Key\n" +
                 ") with (\n" +
                 "'connector' = 'upsert-kafka',\n" +
-                "'topic' = 'dwd_comment_info_inc',\n" +
+                "'topic' = 'dwd_cart_info_inc',\n" +
                 "'properties.bootstrap.servers' = 'cdh01:9092,cdh02:9092,cdh03:9092',\n" +
                 "'key.format' = 'json',\n" +  // 仅保留Key的格式配置
                 "'value.format' = 'json',\n" +
@@ -146,13 +118,11 @@ public class DwdCommentInfo {
                 ")");
 
         //将关联后的数据写入创建好的动态表中
-        joinTable.executeInsert("dwd_comment_info_inc");
+        cartTable.executeInsert("dwd_cart_info_inc");
 
         //查询数据是否写入了动态表
-//        tableEnv.executeSql("select * from dwd_comment_info_inc").print();
+        tableEnv.executeSql("select * from dwd_cart_info_inc").print();
 
-
-        // 4. 执行Flink作业
-        env.execute("dwd_comment_info_inc");
+        env.execute("dwd_cart_info_inc");
     }
 }
