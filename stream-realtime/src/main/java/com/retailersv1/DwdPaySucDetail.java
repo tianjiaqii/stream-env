@@ -39,7 +39,9 @@ public class DwdPaySucDetail {
                 "split_activity_amount string,\n" +
                 "split_coupon_amount string,\n" +
                 "split_total_amount string,\n" +
-                "ts bigint\n" +
+                "ts bigint,\n" +
+                "event_time AS TO_TIMESTAMP(FROM_UNIXTIME(ts / 1000, 'yyyy-MM-dd HH:mm:ss')),\n" +
+                "WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND\n" +
 //                "PRIMARY KEY (id) NOT ENFORCED  -- 主键会自动作为Kafka的Key\n" +
                 ") WITH (\n" +
                 "  'connector' = 'kafka',\n" +
@@ -103,8 +105,8 @@ public class DwdPaySucDetail {
                 "  `source` MAP<string,string>,\n" +
                 "   `proc_time` as proctime() ,\n"+
                 "  `ts_ms` BIGINT,\n" +
-                "    ts_ts AS TO_TIMESTAMP(FROM_UNIXTIME(ts_ms / 1000)),\n" +
-                "    WATERMARK FOR ts_ts AS ts_ts - INTERVAL '5' SECOND\n" +
+                "   event_time AS TO_TIMESTAMP(FROM_UNIXTIME(`after`.`create_time` / 1000, 'yyyy-MM-dd HH:mm:ss')),\n" +
+                "    WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND\n" +
                 ") WITH (\n" +
                 "  'connector' = 'kafka',\n" +
                 "  'topic' = 'dwd_payment_info',\n" +
@@ -130,7 +132,8 @@ public class DwdPaySucDetail {
                 "`after`.`id` AS id,\n" +
                 "`after`.`order_id` AS order_id,\n" +
                 "`after`.`operate_time` AS operate_time,\n" +
-                "`proc_time` AS ts \n" +
+                "`event_time` AS ts ,\n" +
+                "`proc_time` AS td \n" +
                 "FROM KafkaPaymentTable where payment_status='1602'");
 
 //        paymentTable.execute().print();
@@ -150,7 +153,7 @@ public class DwdPaySucDetail {
                 " 'table-name' = 'dim_base_dic',\n" +
                 " 'zookeeper.quorum' = 'cdh01:2181'\n" +
                 ");");
-//        tableEnv.executeSql("SELECT info.dic_code, info.dic_name FROM base_dic").print();
+//        tableEnv.executeSql("SELECT dic_code, info.dic_name FROM base_dic").print();
 
 
         Table paymentSuccessInfo = tableEnv.sqlQuery("select " +
@@ -174,20 +177,49 @@ public class DwdPaySucDetail {
                 "from payment_info pi " +
                 "join dwd_order_detail od " +
                 "on pi.order_id=od.order_id " +
-//                "and od.et >= pi.et - interval '30' minute " +
-//                "and od.et <= pi.et + interval '5' second " +
-                "join base_dic for system_time as of pi.ts as dic " +
-                "on pi.payment_type=dic.dic_code ");
+                "and od.event_time >= pi.ts - interval '30' day " +
+                "and od.event_time <= pi.ts + interval '30' second " +
+                "join base_dic for system_time as of pi.td as dic " +
+                "on pi.payment_status=dic.dic_code ");
 
-        paymentSuccessInfo.execute().print();
+//        paymentSuccessInfo.execute().print();
 
+        //创建要写入Kafka的动态表
+        tableEnv.executeSql("create table dwd_payment_success_inc(\n" +
+                "order_detail_id bigint,\n" +
+                "order_id bigint,\n" +
+                "user_id bigint,\n" +
+                "sku_id bigint,\n" +
+                "sku_name string,\n" +
+                "province_id string,\n" +
+                "activity_id bigint,\n" +
+                "activity_rule_id bigint,\n" +
+                "coupon_id bigint,\n" +
+                "payment_type_code string,\n" +
+                "payment_type_name string,\n" +
+                "callback_time bigint,\n" +
+                "sku_num bigint,\n" +
+                "split_activity_amount string,\n" +
+                "split_coupon_amount string,\n" +
+                "split_payment_amount string,\n" +
+                "ts TIMESTAMP(3),\n" +
+                "PRIMARY KEY (order_detail_id) NOT ENFORCED  -- 主键会自动作为Kafka的Key\n" +
+                ") with (\n" +
+                "'connector' = 'upsert-kafka',\n" +
+                "'topic' = 'dwd_payment_success_inc',\n" +
+                "'properties.bootstrap.servers' = 'cdh01:9092,cdh02:9092,cdh03:9092',\n" +
+                "'key.format' = 'json',\n" +  // 仅保留Key的格式配置
+                "'value.format' = 'json',\n" +
+                "'value.fields-include' = 'ALL'\n" +
+                ")");
 
+        //将关联后的数据写入创建好的动态表中
+        paymentSuccessInfo.executeInsert("dwd_payment_success_inc");
+
+        //查询数据是否写入了动态表
+        tableEnv.executeSql("select * from dwd_payment_success_inc").print();
 
         env.execute("DwdPaySucDetail");
-
-
-
-
 
     }
 }
