@@ -7,6 +7,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
 import org.json.JSONObject;
@@ -21,7 +22,7 @@ public class OdsCDCToKafka {
     private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
 
     // Kafka连接信息（请确认与实际环境一致）
-    private static final String KAFKA_BROKERS = "cdh01:9092,cdh02:9092,cdh03:9092";
+    private static final String KAFKA_BROKERS = "cdh01:9092";
 
     public static void main(String[] args) throws Exception {
         // 初始化Flink执行环境
@@ -42,6 +43,9 @@ public class OdsCDCToKafka {
                 "ods_trade_order",
                 "ods_trade_order_topic",
                 new String[]{"order_id", "user_id", "order_time", "pay_amount", "is_paid", "order_status", "goods_type", "goods_id", "shop_id"});
+
+
+
 
         // 3. 处理交易支付表
         processTable(tEnv, env,
@@ -73,7 +77,11 @@ public class OdsCDCToKafka {
                 "ods_shop_operation_log_topic",
                 new String[]{"id", "shop_id", "operate_type", "operate_time", "operate_content", "operator_id"});
 
+
         env.execute("Flink MySQL to Kafka");
+
+
+
     }
 
     /**
@@ -142,13 +150,13 @@ public class OdsCDCToKafka {
         }
         // 时间字段（MySQL中为DATETIME，Flink对应TIMESTAMP）
         else if (columnName.contains("time")) {
-            return "TIMESTAMP";
+            return "string";
         }
         // 金额/价格字段（MySQL中为DECIMAL(10,2)，Flink对应DECIMAL(10,2)）
         else if (columnName.contains("amount") || columnName.contains("price")) {
             return "DECIMAL(10,2)";
         }
-        // 布尔型字段（MySQL中为TINYINT(1)，Flink对应BOOLEAN，避免之前的Boolean→Integer转换错误）
+        // 布尔型字段（MySQL中为TINYINT(1)，Flink对应BOOLEAN，避免之前的Boolean→Integer转换错误）a
         else if (columnName.startsWith("is_")) { // is_follow_shop/is_paid
             return "BOOLEAN";
         }
